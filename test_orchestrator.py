@@ -98,6 +98,38 @@ def test_build_job_carries_paragraphs_and_omits_derived_fields():
     assert len(job_data["paragraphs"]) == 2
 
 
+def _docs_api_tab(title, *contents):
+    return {
+        "tabProperties": {"title": title},
+        "documentTab": {
+            "body": {"content": [_docs_api_paragraph("NORMAL_TEXT", c) for c in contents]}
+        },
+    }
+
+
+def test_build_job_rejects_multi_tab_documents():
+    document = {
+        "tabs": [
+            _docs_api_tab("Chapter 1", "Hello\n"),
+            _docs_api_tab("Notes", "Some notes\n"),
+        ],
+    }
+    with pytest.raises(ValueError, match=r"Chapter 1.*Notes"):
+        orch.build_job("doc-abc", document)
+
+
+def test_build_job_allows_single_tab_documents():
+    document = {"tabs": [_docs_api_tab("Chapter 1", "Hello\n")]}
+    job_data = orch.build_job("doc-abc", document)
+    assert [p["text"] for p in job_data["paragraphs"]] == ["Hello"]
+
+
+def test_build_job_allows_documents_without_tabs_field():
+    document = {"body": {"content": [_docs_api_paragraph("NORMAL_TEXT", "Hello\n")]}}
+    job_data = orch.build_job("doc-abc", document)
+    assert [p["text"] for p in job_data["paragraphs"]] == ["Hello"]
+
+
 # ---------------------------------------------------------------------------
 # validate_edits
 # ---------------------------------------------------------------------------

@@ -29,14 +29,25 @@ def extract_doc(doc_id: str) -> dict:
     Authenticates, fetches the document via the Docs API, builds the
     paragraph list, and writes job.json to disk — then returns the job
     payload directly so editing can begin without a separate read.
+
+    Returns `{error: string}` instead — and writes nothing — if the
+    document has more than one tab. Multi-tab docs aren't supported: this
+    pipeline can only see and rebuild the first tab, so proceeding would
+    silently drop the rest on upload. Tell the user the doc has multiple
+    tabs and that this pipeline can't process it; don't retry or work
+    around it.
     """
     from googleapiclient.discovery import build as build_service
 
     creds = orch.authenticate()
     docs = build_service("docs", "v1", credentials=creds)
-    document = docs.documents().get(documentId=doc_id).execute()
+    document = docs.documents().get(documentId=doc_id, includeTabsContent=True).execute()
 
-    job = orch.build_job(doc_id, document)
+    try:
+        job = orch.build_job(doc_id, document)
+    except ValueError as e:
+        return {"error": str(e)}
+
     JOB_PATH.write_text(json.dumps(job, indent=2, ensure_ascii=False), encoding="utf-8")
 
     return {"job": job}

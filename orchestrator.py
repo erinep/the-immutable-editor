@@ -100,10 +100,10 @@ def authenticate():
 # extract
 # ---------------------------------------------------------------------------
 
-def paragraphs_from_document(document):
-    """Walk the Docs API body content and build the documented paragraph list."""
+def _paragraphs_from_body(body):
+    """Walk a Docs API `body` (top-level or `documentTab.body`) into paragraphs."""
     paragraphs = []
-    for element in document.get("body", {}).get("content", []):
+    for element in body.get("content", []):
         paragraph = element.get("paragraph")
         if paragraph is None:
             continue
@@ -126,6 +126,42 @@ def paragraphs_from_document(document):
     return paragraphs
 
 
+def paragraphs_from_document(document):
+    """Walk a Docs API document response and build the documented paragraph list.
+
+    Fetched with `includeTabsContent=True` (required to even see whether a
+    document has more than one tab — see below), every document's content
+    now lives under `tabs[i].documentTab.body` rather than a top-level
+    `body`; the latter is no longer present at all in that response shape.
+
+    Refuses outright if the document has more than one tab: this pipeline
+    can only see and rebuild a single tab's content, and the
+    `.docx`/Drive-replace upload path has no way to represent Google Docs
+    tabs at all — even a perfect extraction of every tab would have nowhere
+    to go on the way back out. Silently proceeding would extract a partial
+    document and then overwrite the live doc with that partial version,
+    permanently dropping every tab but the first — exactly the
+    silent-destruction failure mode the validation guarantees exist to
+    prevent. Refusing loudly is the only safe option until this pipeline
+    has a fundamentally different upload mechanism.
+    """
+    tabs = document.get("tabs")
+    if tabs is not None:
+        if len(tabs) != 1:
+            titles = [t.get("tabProperties", {}).get("title", "untitled") for t in tabs]
+            raise ValueError(
+                f"Document has {len(tabs)} tabs ({', '.join(titles)}) — this "
+                "pipeline only supports single-tab documents. Extracting and "
+                "rebuilding a multi-tab doc would silently drop every tab "
+                "but the first."
+            )
+        body = tabs[0].get("documentTab", {}).get("body", {})
+    else:
+        body = document.get("body", {})
+
+    return _paragraphs_from_body(body)
+
+
 def build_job(doc_id, document):
     paragraphs = paragraphs_from_document(document)
     return {
@@ -139,9 +175,12 @@ def cmd_extract(args):
 
     creds = authenticate()
     docs = build_service("docs", "v1", credentials=creds)
-    document = docs.documents().get(documentId=args.doc_id).execute()
+    document = docs.documents().get(documentId=args.doc_id, includeTabsContent=True).execute()
 
-    job = build_job(args.doc_id, document)
+    try:
+        job = build_job(args.doc_id, document)
+    except ValueError as e:
+        sys.exit(str(e))
 
     out_path = Path(args.out)
     out_path.write_text(json.dumps(job, indent=2, ensure_ascii=False), encoding="utf-8")
