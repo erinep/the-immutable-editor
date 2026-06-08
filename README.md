@@ -25,8 +25,6 @@ The handoff between layers is a pair of JSON files on disk. This is the only int
 - Authenticating with Google APIs (OAuth2)
 - Calling the Docs API to extract document content
 - Serialising extracted content to `job.json`
-- Computing and storing the source checksum
-- Re-verifying the checksum before build
 - Validating every `old` field in the diff against the source
 - Rejecting any edit whose `old` field does not match exactly
 - Constructing the `.docx` with `<w:ins>`/`<w:del>` OOXML tracked changes
@@ -54,7 +52,6 @@ Produced by the orchestrator, consumed by Claude.
 ```json
 {
   "doc_id": "string — Google Doc file ID",
-  "checksum": "string — SHA-256 hex digest of plain_text",
   "plain_text": "string — full document text, paragraphs joined by newline",
   "paragraphs": [
     {
@@ -92,9 +89,8 @@ Produced by Claude, consumed by the orchestrator.
 
 Enforced by the orchestrator at build time, in this order:
 
-1. Recompute SHA-256 of the current `plain_text` field. If it does not match the stored `checksum`, abort — the source has changed since extraction.
-2. For each edit, slice `paragraphs[para].text[start:end]` and compare to `old`. If they do not match character-for-character, reject that edit and log it. Continue processing remaining edits.
-3. Build the `.docx` only from edits that passed validation.
+1. For each edit, slice `paragraphs[para].text[start:end]` and compare to `old`. If they do not match character-for-character, reject that edit and log it. Continue processing remaining edits.
+2. Build the `.docx` only from edits that passed validation.
 
 ---
 
@@ -110,7 +106,7 @@ Run the orchestrator's extract command, passing a Google Doc ID:
 python orchestrator.py extract --doc-id <DOC_ID> --out job.json
 ```
 
-This authenticates, calls the Docs API, builds the paragraph list, computes the checksum, and writes `job.json`.
+This authenticates, calls the Docs API, builds the paragraph list, and writes `job.json`.
 
 **Step 2 — Edit**
 
@@ -132,7 +128,7 @@ Run the orchestrator's build command:
 python orchestrator.py build --job job.json --diff diff.json
 ```
 
-This validates the checksum, validates each `old` field, constructs the `.docx` with tracked changes, and uploads it to Drive using the `doc_id` from `job.json`.
+This validates each `old` field, constructs the `.docx` with tracked changes, and uploads it to Drive using the `doc_id` from `job.json`.
 
 **Step 4 — Review**
 
@@ -164,7 +160,7 @@ Output: { accepted: number, rejected: number, doc_url: string }
 Side effect: builds .docx, uploads to Drive, logs rejected edits
 ```
 
-Performs checksum verification, `old` field validation, .docx construction, and Drive upload. Returns a summary of accepted and rejected edits.
+Performs `old` field validation, .docx construction, and Drive upload. Returns a summary of accepted and rejected edits.
 
 ### Session flow
 
@@ -185,6 +181,7 @@ Phase B is purely a convenience wrapper around Phase A. The correctness guarante
 
 The pipeline makes no attempt to validate whether Claude's suggested text is an improvement. That judgment is entirely the reviewer's. The pipeline only guarantees:
 
-- The source was not modified between extraction and build
-- Every tracked change in the `.docx` is anchored to the correct span of original text
+- Every tracked change in the `.docx` is anchored to the correct span of original text, because the `old` field is checked character-for-character against `paragraphs[para].text[start:end]` before any edit is applied
 - No original text was silently modified without a corresponding tracked change entry
+
+Note: the pipeline does not detect whether the live Google Doc changed between `extract` and `build` — `job.json` is a frozen snapshot, and nothing re-fetches the document to compare. If a human edits the doc in that window, `build` will still validate and upload against the stale snapshot, overwriting their changes. An earlier draft of this contract proposed a stored-checksum re-check to guard against this, but a checksum recomputed from a field stored in the same file it's compared against can only ever detect corruption of `job.json` itself — it cannot detect drift in the live source. Catching that would require re-fetching the document at build time and comparing a freshly computed digest, which this pipeline does not do.

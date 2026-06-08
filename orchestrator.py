@@ -2,12 +2,11 @@
 """Deterministic orchestrator for the fiction-editing pipeline.
 
 Owns all I/O described in DESIGN-CONTRACT.md / README.md: Google API calls,
-checksum logic, diff validation, and .docx construction. Contains no
-intelligence — it always produces the same output for the same input.
+diff validation, and .docx construction. Contains no intelligence — it
+always produces the same output for the same input.
 """
 
 import argparse
-import hashlib
 import io
 import itertools
 import json
@@ -98,14 +97,6 @@ def authenticate():
 
 
 # ---------------------------------------------------------------------------
-# Checksum
-# ---------------------------------------------------------------------------
-
-def compute_checksum(text):
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-# ---------------------------------------------------------------------------
 # extract
 # ---------------------------------------------------------------------------
 
@@ -137,11 +128,9 @@ def paragraphs_from_document(document):
 
 def build_job(doc_id, document):
     paragraphs = paragraphs_from_document(document)
-    plain_text = "\n".join(p["text"] for p in paragraphs)
     return {
         "doc_id": doc_id,
-        "checksum": compute_checksum(plain_text),
-        "plain_text": plain_text,
+        "plain_text": "\n".join(p["text"] for p in paragraphs),
         "paragraphs": paragraphs,
     }
 
@@ -158,10 +147,7 @@ def cmd_extract(args):
     out_path = Path(args.out)
     out_path.write_text(json.dumps(job, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    print(
-        f"Wrote {out_path} — {len(job['paragraphs'])} paragraphs, "
-        f"checksum {job['checksum']}"
-    )
+    print(f"Wrote {out_path} — {len(job['paragraphs'])} paragraphs")
 
 
 # ---------------------------------------------------------------------------
@@ -396,16 +382,7 @@ def cmd_build(args):
     job = json.loads(Path(args.job).read_text(encoding="utf-8"))
     diff = json.loads(Path(args.diff).read_text(encoding="utf-8"))
 
-    # 1. Re-verify the checksum before doing anything else.
-    recomputed = compute_checksum(job["plain_text"])
-    if recomputed != job["checksum"]:
-        sys.exit(
-            "ERROR: checksum mismatch — the source has changed since "
-            f"extraction (stored {job['checksum']}, recomputed {recomputed}). "
-            "Aborting; re-run `extract` against the current document."
-        )
-
-    # 2. Validate every edit's `old` field against the source.
+    # 1. Validate every edit's `old` field against the source.
     accepted, rejected = validate_edits(job, diff)
     for edit in rejected:
         print(
@@ -414,7 +391,7 @@ def cmd_build(args):
             file=sys.stderr,
         )
 
-    # 3. Build the .docx from validated edits only.
+    # 2. Build the .docx from validated edits only.
     docx_bytes = build_docx_bytes(job, accepted)
     out_path = Path(args.out) if args.out else Path(f"{job['doc_id']}.docx")
     out_path.write_bytes(docx_bytes)
@@ -423,7 +400,7 @@ def cmd_build(args):
     if args.no_upload:
         return
 
-    # 4. Upload to Drive, replacing the original file in place.
+    # 3. Upload to Drive, replacing the original file in place.
     creds = authenticate()
     drive = build_service("drive", "v3", credentials=creds)
     media = MediaFileUpload(str(out_path), mimetype=DOCX_MIMETYPE, resumable=True)
