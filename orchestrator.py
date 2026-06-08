@@ -130,7 +130,6 @@ def build_job(doc_id, document):
     paragraphs = paragraphs_from_document(document)
     return {
         "doc_id": doc_id,
-        "plain_text": "\n".join(p["text"] for p in paragraphs),
         "paragraphs": paragraphs,
     }
 

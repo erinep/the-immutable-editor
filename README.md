@@ -52,7 +52,6 @@ Produced by the orchestrator, consumed by Claude.
 ```json
 {
   "doc_id": "string — Google Doc file ID",
-  "plain_text": "string — full document text, paragraphs joined by newline",
   "paragraphs": [
     {
       "index": 0,

@@ -38,7 +38,6 @@ def paragraphs():
 def job(paragraphs):
     return {
         "doc_id": "fake-doc-id-123",
-        "plain_text": "\n".join(p["text"] for p in paragraphs),
         "paragraphs": paragraphs,
     }
 
@@ -79,7 +78,7 @@ def test_paragraphs_from_document_unknown_style_passes_through():
     assert paragraphs[0]["style"] == "SOME_FUTURE_STYLE"
 
 
-def test_build_job_joins_paragraph_text_and_omits_checksum():
+def test_build_job_carries_paragraphs_and_omits_derived_fields():
     document = {
         "body": {
             "content": [
@@ -90,7 +89,11 @@ def test_build_job_joins_paragraph_text_and_omits_checksum():
     }
     job_data = orch.build_job("doc-abc", document)
     assert job_data["doc_id"] == "doc-abc"
-    assert job_data["plain_text"] == "Hello\nWorld"
+    assert [p["text"] for p in job_data["paragraphs"]] == ["Hello", "World"]
+    # plain_text and checksum were both dropped: paragraphs already carry the
+    # text, and a stored field can't detect drift in the live source — see
+    # README.md.
+    assert "plain_text" not in job_data
     assert "checksum" not in job_data
     assert len(job_data["paragraphs"]) == 2
 
