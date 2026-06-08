@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+
+# OAuth secrets and cached tokens — never commit
+credentials.json
+token.json
+
+# Generated pipeline artifacts
+job.json
+diff.json
+*.docx
