@@ -154,25 +154,42 @@ Performs the same logic as `orchestrator.py extract`. Returns the job payload so
 **build_and_upload**
 
 ```
-Input:  { doc_id: string, diff: <diff.json contents> }
-Output: { accepted: number, rejected: number, doc_url: string }
+Input:  { doc_id: string, edits: [{ para, old, new, occurrence? }] }
+Output: { accepted: number, rejected: number, rejected_edits: [...], doc_url: string }
+        — or, if any edit's `old` can't be placed in the source:
+        { error: string, problems: [string, ...] }
 Side effect: builds .docx, uploads to Drive, logs rejected edits
 ```
 
-Performs `old` field validation, .docx construction, and Drive upload. Returns a summary of accepted and rejected edits.
+Takes edits in *draft* form — `para`, `old`, `new`, and optionally
+`occurrence` for repeated text — the three things Claude actually reasons
+about, with no offsets to compute. The tool locates each `old` in the
+source paragraph by exact string search — precise, mechanical placement
+that belongs in code, not in an LLM counting characters — then runs the
+same `old`-field validation, `.docx` construction, and Drive upload as
+`orchestrator.py build`. Placement problems (not found, ambiguous,
+overlapping) are reported separately from validation rejections — the
+former mean an entry's `old` needs adjusting before anything is built; the
+latter mean the source changed since `extract_doc`.
 
 ### Session flow
 
-Claude Code calls `extract_doc`, receives the document, reasons about edits, then calls `build_and_upload` with the diff. The human opens the doc and reviews suggestions. Claude never calls any Google API directly — it only calls the two MCP tools.
+Claude Code calls `extract_doc`, receives the document, reasons about
+edits, then calls `build_and_upload` with the draft edits. The human opens
+the doc and reviews suggestions. Claude never calls any Google API
+directly, computes no offsets, and touches no files — it only calls the
+two MCP tools.
 
 ### What does not change in Phase B
 
-- The JSON schemas for job and diff are identical
-- The validation logic in the orchestrator is identical
-- The `.docx` construction is identical
-- The human review step is identical
+- The job schema is identical; `.docx` construction, `old`-field
+  validation, and the human review step are all identical
+- Locating `old` in the source is still exact string search — only *where*
+  it happens moves, from a bundled script (Phase A) to the tool itself
+  (Phase B)
 
-Phase B is purely a convenience wrapper around Phase A. The correctness guarantees are the same.
+Phase B trades the file-mediated handoff for direct tool calls — fewer
+moving parts to route around, same correctness guarantees underneath.
 
 ---
 

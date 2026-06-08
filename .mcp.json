@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "immutable-editor": {
+      "command": "venv/bin/python3",
+      "args": ["mcp_server.py"]
+    }
+  }
+}
