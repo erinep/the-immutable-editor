@@ -211,11 +211,27 @@ def xml_space_preserve(element):
     element.set(f"{{{XML_NS}}}space", "preserve")
 
 
+# The Docs API encodes a soft line break (Shift+Enter within a paragraph) as
+# U+000B (vertical tab) in textRun content. XML 1.0 forbids that control
+# character outright, so it can't be written into <w:t>/<w:delText> as-is —
+# it must become an explicit <w:br/> between text segments instead.
+SOFT_LINE_BREAK = "\x0b"
+
+
+def add_text_with_breaks(run, text, text_tag):
+    segments = text.split(SOFT_LINE_BREAK)
+    for i, segment in enumerate(segments):
+        if i > 0:
+            etree.SubElement(run, w("br"))
+        if segment or len(segments) == 1:
+            t = etree.SubElement(run, text_tag)
+            xml_space_preserve(t)
+            t.text = segment
+
+
 def add_run(parent, text):
     run = etree.SubElement(parent, w("r"))
-    t = etree.SubElement(run, w("t"))
-    xml_space_preserve(t)
-    t.text = text
+    add_text_with_breaks(run, text, w("t"))
     return run
 
 
@@ -225,9 +241,7 @@ def add_deletion(parent, text, change_id, author, when):
     d.set(w("author"), author)
     d.set(w("date"), when)
     run = etree.SubElement(d, w("r"))
-    t = etree.SubElement(run, w("delText"))
-    xml_space_preserve(t)
-    t.text = text
+    add_text_with_breaks(run, text, w("delText"))
     return d
 
 
@@ -237,9 +251,7 @@ def add_insertion(parent, text, change_id, author, when):
     ins.set(w("author"), author)
     ins.set(w("date"), when)
     run = etree.SubElement(ins, w("r"))
-    t = etree.SubElement(run, w("t"))
-    xml_space_preserve(t)
-    t.text = text
+    add_text_with_breaks(run, text, w("t"))
     return ins
 
 
