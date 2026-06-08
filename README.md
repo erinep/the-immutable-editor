@@ -113,7 +113,7 @@ This authenticates, calls the Docs API, builds the paragraph list, and writes `j
 Open a Claude Code session in the project directory. Provide a task prompt along these lines:
 
 ```
-Read job.json. Edit the manuscript for pacing and clarity.
+Read job.json. Edit the manuscript for grammar, splling and malapropism
 Output your edits to diff.json following the schema in DESIGN-CONTRACT.md.
 The `old` field in every edit must be copied character-for-character from the source.
 ```
